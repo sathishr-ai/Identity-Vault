@@ -1,0 +1,10 @@
+{
+  "description": "Streamline digital identity verification with a secure blockchain-based platform for users, admins, and verifiers, enhancing trust and efficiency.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

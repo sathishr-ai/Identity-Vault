@@ -1,0 +1,22 @@
+# Node / React Frontend
+node_modules/
+dist/
+dist-ssr/
+*.local
+.env
+
+# Java / Spring Boot Backend
+backend/target/
+backend/extracted_jar/
+backend/temp_build/
+backend/data/
+
+# Logs and Scratch scripts
+*.log
+*.cjs
+backend/*.txt
+backend/*.java
+
+# OS specific
+.DS_Store
+Thumbs.db
