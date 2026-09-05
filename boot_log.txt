@@ -1,2 +1,0 @@
-Error: Could not find or load main class com.blockid.platform.BlockIdApplication
-Caused by: java.lang.ClassNotFoundException: com.blockid.platform.BlockIdApplication
