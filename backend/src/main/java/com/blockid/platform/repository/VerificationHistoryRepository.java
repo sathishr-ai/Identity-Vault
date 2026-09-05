@@ -16,4 +16,6 @@ public interface VerificationHistoryRepository extends JpaRepository<Verificatio
 
     @Query("SELECT COUNT(v) FROM VerificationHistory v WHERE v.verificationDate >= CURRENT_DATE")
     long countTodayVerifications();
+
+    long countByStatus(String status);
 }

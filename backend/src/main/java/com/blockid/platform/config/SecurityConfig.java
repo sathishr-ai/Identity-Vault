@@ -24,6 +24,8 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import java.util.Arrays;
 import java.util.Collections;
 
+import com.blockid.platform.service.CustomOAuth2UserService;
+
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
@@ -34,6 +36,12 @@ public class SecurityConfig {
 
     @Autowired
     private CustomUserDetailsService userDetailsService;
+
+    @Autowired
+    private CustomOAuth2UserService customOAuth2UserService;
+
+    @Autowired
+    private OAuth2LoginSuccessHandler oAuth2LoginSuccessHandler;
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -64,8 +72,13 @@ public class SecurityConfig {
                         .requestMatchers("/h2-console/**").permitAll()
                         .requestMatchers("/api/v1/documents/view/**").permitAll()
                         .requestMatchers("/api/v1/verify/scan/**").permitAll() // Public access for scanning QR code
+                        .requestMatchers("/", "/login**", "/oauth2/**").permitAll()
                         .anyRequest().authenticated())
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .oauth2Login(oauth2 -> oauth2
+                        .userInfoEndpoint(userInfo -> userInfo
+                                .userService(customOAuth2UserService))
+                        .successHandler(oAuth2LoginSuccessHandler))
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
                 .headers(headers -> headers.frameOptions(HeadersConfigurer.FrameOptionsConfig::disable))
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(jwtRequestFilter, UsernamePasswordAuthenticationFilter.class);

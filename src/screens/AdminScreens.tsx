@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Users, Shield, CheckCircle, XCircle, Clock, BarChart3,
   Lock, Search, Filter, Download, Eye, Edit, Trash2, AlertTriangle,
-  Plus, RefreshCw, TrendingUp, Database, Zap, FileText
+  Plus, RefreshCw, TrendingUp, Database, Zap, FileText, Inbox, MessageSquare
 } from 'lucide-react';
 import { Card, StatCard, StatusBadge, Avatar, Button, Input, Select, Modal, Toast, SectionHeader, Pagination } from '../components/UIComponents';
 import { VerificationAreaChart, ApprovalBarChart, StatusPieChart, UserGrowthLine } from '../components/Charts';
 import { mockUsers, mockBlocks, mockAuditLogs } from '../data/mockData';
 import { adminApi, authApi } from '../service/api';
+import { useDialog } from '../context/DialogContext';
 // ── Admin Dashboard ───────────────────────────────────────────────────────────
 export function AdminDashboard({ onNav }: { onNav: (s: string) => void }) {
   const [stats, setStats] = useState<any>({
@@ -17,9 +19,17 @@ export function AdminDashboard({ onNav }: { onNav: (s: string) => void }) {
   const [analytics, setAnalytics] = useState<any[]>([]);
 
   useEffect(() => {
-    adminApi.getStats().then(setStats).catch(console.error);
+    Promise.all([adminApi.getStats(), adminApi.getMonthlyAnalytics()]).then(([s, a]) => {
+      setStats(s);
+      if (a && a.length > 0 && s.totalVerified !== undefined) {
+        // Explicitly bind the active graph plotting strictly natively to the KPI ledger variable 
+        // completely bypassing any backend/frontend desync variables
+        a[a.length - 1].verifications = s.totalVerified;
+      }
+      setAnalytics(a);
+    }).catch(console.error);
+
     adminApi.getAuditLogs(0, 5).then(res => setAuditLogs(res.logs || [])).catch(console.error);
-    adminApi.getMonthlyAnalytics().then(setAnalytics).catch(console.error);
   }, []);
 
   return (
@@ -36,7 +46,7 @@ export function AdminDashboard({ onNav }: { onNav: (s: string) => void }) {
           <div className="flex items-center gap-3">
             <div className="text-right">
               <p className="text-violet-300 text-xs">Network Verified</p>
-              <p className="text-white font-semibold">{stats.totalUsers > 0 ? ((stats.totalVerified / stats.totalUsers) * 100).toFixed(0) : 0}% Identities</p>
+              <p className="text-white font-semibold">{stats.totalUsers > 0 ? (((stats.verifiedUsers || 0) / stats.totalUsers) * 100).toFixed(0) : 0}% Identities</p>
             </div>
             <div className="w-12 h-12 bg-violet-700/80 rounded-2xl flex items-center justify-center">
               <Shield size={24} className="text-violet-200" />
@@ -45,9 +55,9 @@ export function AdminDashboard({ onNav }: { onNav: (s: string) => void }) {
         </div>
         <div className="relative z-10 grid grid-cols-4 gap-4 mt-5 pt-5 border-t border-violet-700/50">
           {[
-            { label: 'Pending Requests', value: stats.pendingVerification, sub: 'Needs action' },
-            { label: 'Verified Users', value: stats.totalVerified, sub: `Out of ${stats.totalUsers} total` },
-            { label: 'Rejected', value: stats.rejectedRequests, sub: 'Blocked requests' },
+            { label: 'Active Sessions', value: stats.activeSessions || 0, sub: 'Staff online' },
+            { label: 'Verified Users', value: stats.verifiedUsers || 0, sub: `Out of ${stats.totalUsers || 0} total` },
+            { label: 'Daily Scans', value: stats.todayVerifications || 0, sub: 'Processed today' },
             { label: 'Total Blocks', value: stats.blockchainBlocks, sub: 'Stored on blockchain' },
           ].map(m => (
             <div key={m.label}>
@@ -62,7 +72,7 @@ export function AdminDashboard({ onNav }: { onNav: (s: string) => void }) {
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard label="Total Users" value={stats.totalUsers} sub="Registered accounts" icon={<Users size={18} />} color="blue" trend={{ value: `${stats.totalUsers}`, up: stats.totalUsers > 0 }} />
-        <StatCard label="Verified Identities" value={stats.totalVerified} sub={`${stats.totalUsers > 0 ? Math.round((stats.totalVerified / stats.totalUsers) * 100) : 0}% of users`} icon={<CheckCircle size={18} />} color="emerald" trend={{ value: `${stats.totalUsers > 0 ? Math.round((stats.totalVerified / stats.totalUsers) * 100) : 0}%`, up: stats.totalVerified > 0 }} />
+        <StatCard label="Verified Identities" value={stats.totalVerified} sub={`${stats.totalUsers > 0 ? Math.round(((stats.verifiedUsers || 0) / stats.totalUsers) * 100) : 0}% of users`} icon={<CheckCircle size={18} />} color="emerald" trend={{ value: `${stats.totalUsers > 0 ? Math.round(((stats.verifiedUsers || 0) / stats.totalUsers) * 100) : 0}%`, up: (stats.verifiedUsers || 0) > 0 }} />
         <StatCard label="Pending Review" value={stats.pendingVerification} sub="Awaiting admin action" icon={<Clock size={18} />} color="amber" trend={{ value: `${stats.pendingVerification}`, up: stats.pendingVerification > 0 }} />
         <StatCard label="Rejected" value={stats.rejectedRequests} sub="All time" icon={<XCircle size={18} />} color="red" trend={{ value: `${stats.rejectedRequests}`, up: false }} />
       </div>
@@ -75,7 +85,10 @@ export function AdminDashboard({ onNav }: { onNav: (s: string) => void }) {
               <h3 className="text-sm font-semibold text-slate-800">Monthly Verification Activity</h3>
               <p className="text-xs text-slate-500">Registrations & verifications over 7 months</p>
             </div>
-            <span className="text-xs text-emerald-600 font-medium bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-200">{analytics.length > 1 ? `↑ ${Math.round(((analytics[analytics.length - 1]?.registrations || 0) / Math.max(1, analytics[analytics.length - 2]?.registrations || 1)) * 100 - 100)}% MoM` : 'Live Data'}</span>
+            <span className="flex items-center gap-1.5 text-xs text-emerald-600 font-medium bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              Live Data
+            </span>
           </div>
           <VerificationAreaChart data={analytics} />
         </Card>
@@ -86,7 +99,7 @@ export function AdminDashboard({ onNav }: { onNav: (s: string) => void }) {
             { name: 'Verified', value: stats.totalVerified, color: '#10B981' },
             { name: 'Pending', value: stats.pendingVerification, color: '#F59E0B' },
             { name: 'Rejected', value: stats.rejectedRequests, color: '#EF4444' }
-          ].filter(d => d.value > 0)} />
+          ]} />
         </Card>
       </div>
 
@@ -156,8 +169,10 @@ export function PendingRequests({ onNav }: { onNav: (s: string) => void }) {
       .then(data => {
         setPending(data.requests);
         setLoading(false);
+        // Refresh sidebar badge count (auto-heal may have changed counts)
+        window.dispatchEvent(new Event('blockid_pending_update'));
       })
-      .catch(err => {
+      .catch(async err => {
         console.error("Failed to load pending requests", err);
         setLoading(false);
       });
@@ -167,23 +182,114 @@ export function PendingRequests({ onNav }: { onNav: (s: string) => void }) {
     loadRequests();
   }, [page]);
 
-  const handleApprove = (userId: number) => {
-    adminApi.approveIdentity(userId)
-      .then(() => loadRequests())
-      .catch(err => {
-        alert("Failed to approve identity: " + (err.message || JSON.stringify(err)));
-        console.error(err);
-      });
+  // Per-Document Review Modal State
+  const [reviewUser, setReviewUser] = useState<any | null>(null);
+  const [docDecisions, setDocDecisions] = useState<Record<number, { action: 'approve' | 'reject'; validUntil: string; reason: string }>>({});
+  const [submitting, setSubmitting] = useState(false);
+  const [modalError, setModalError] = useState('');
+  const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
+
+  const [validUntilDefault] = useState(() => {
+    let d = new Date();
+    d.setFullYear(d.getFullYear() + 1);
+    return d.toISOString().split('T')[0];
+  });
+
+  const openReviewModal = (user: any) => {
+    setReviewUser(user);
+    setModalError('');
+    const initial: Record<number, { action: 'approve' | 'reject'; validUntil: string; reason: string }> = {};
+    (user.documents || []).filter((d: any) => String(d.status).toLowerCase() === 'pending').forEach((d: any) => {
+      initial[d.id] = { action: 'approve', validUntil: validUntilDefault, reason: '' };
+    });
+    setDocDecisions(initial);
   };
 
-  const handleReject = (userId: number) => {
-    const reason = prompt("Enter rejection reason:") || "Not provided";
-    adminApi.rejectIdentity(userId, reason)
-      .then(() => loadRequests())
-      .catch(err => {
-        alert("Failed to reject identity: " + (err.message || JSON.stringify(err)));
-        console.error(err);
-      });
+  const handleDocActionChange = (docId: number, action: 'approve' | 'reject') => {
+    setDocDecisions(prev => ({
+      ...prev,
+      [docId]: {
+        ...prev[docId],
+        action,
+        validUntil: prev[docId]?.validUntil || validUntilDefault,
+        reason: prev[docId]?.reason || ''
+      }
+    }));
+    setModalError('');
+  };
+
+  const handleDocExpiryChange = (docId: number, validUntil: string) => {
+    setDocDecisions(prev => ({
+      ...prev,
+      [docId]: { ...prev[docId], validUntil }
+    }));
+  };
+
+  const handleDocReasonChange = (docId: number, reason: string) => {
+    setDocDecisions(prev => ({
+      ...prev,
+      [docId]: { ...prev[docId], reason }
+    }));
+    setModalError('');
+  };
+
+  const handleApproveAll = () => {
+    const updated: Record<number, { action: 'approve' | 'reject'; validUntil: string; reason: string }> = {};
+    Object.keys(docDecisions).forEach(idStr => {
+      const id = Number(idStr);
+      updated[id] = { action: 'approve', validUntil: docDecisions[id]?.validUntil || validUntilDefault, reason: '' };
+    });
+    setDocDecisions(updated);
+  };
+
+  const handleRejectAll = () => {
+    const updated: Record<number, { action: 'approve' | 'reject'; validUntil: string; reason: string }> = {};
+    Object.keys(docDecisions).forEach(idStr => {
+      const id = Number(idStr);
+      updated[id] = { action: 'reject', validUntil: docDecisions[id]?.validUntil || validUntilDefault, reason: docDecisions[id]?.reason || 'Document does not meet compliance requirements.' };
+    });
+    setDocDecisions(updated);
+  };
+
+  const handleSubmitReviewModal = () => {
+    if (!reviewUser) return;
+
+    const pendingDocs = (reviewUser.documents || []).filter((d: any) => String(d.status).toLowerCase() === 'pending');
+    if (pendingDocs.length === 0) {
+      setToast({ type: 'error', msg: 'No pending documents to review.' });
+      return;
+    }
+
+    for (const doc of pendingDocs) {
+      const dec = docDecisions[doc.id];
+      if (dec && dec.action === 'reject' && !dec.reason.trim()) {
+        setModalError(`Please provide a rejection reason for "${doc.name || 'Document'}".`);
+        return;
+      }
+    }
+
+    setSubmitting(true);
+    const payload = pendingDocs.map((doc: any) => {
+      const dec = docDecisions[doc.id] || { action: 'approve', validUntil: validUntilDefault, reason: '' };
+      return {
+        docId: String(doc.id),
+        decision: dec.action,
+        validUntil: dec.action === 'approve' ? dec.validUntil : undefined,
+        reason: dec.action === 'reject' ? dec.reason : undefined
+      };
+    });
+
+    adminApi.reviewDocuments(reviewUser.userId, payload)
+      .then(res => {
+        setToast({ type: 'success', msg: `Review complete: ${res.approved} approved, ${res.rejected} rejected.` });
+        setReviewUser(null);
+        loadRequests();
+        window.dispatchEvent(new Event('blockid_pending_update'));
+      })
+      .catch(async err => {
+        setToast({ type: 'error', msg: 'Review failed: ' + (err.message || JSON.stringify(err)) });
+      })
+      .finally(() => setSubmitting(false));
   };
 
   return (
@@ -216,10 +322,10 @@ export function PendingRequests({ onNav }: { onNav: (s: string) => void }) {
                 <div className="flex items-center gap-3 mt-1 mb-2">
                   <span className="text-[10px] text-slate-400">Submitted: {new Date(user.submittedAt || Date.now()).toLocaleDateString()}</span>
                 </div>
-                {user.documents && user.documents.length > 0 && (
+                {user.documents && user.documents.some((d: any) => String(d.status).toLowerCase() === 'pending') && (
                   <div className="flex gap-2 flex-wrap">
                     <span className="text-[10px] text-slate-500 flex items-center">Review files:</span>
-                    {user.documents.map((doc: any, idx: number) => {
+                    {user.documents.filter((d: any) => String(d.status).toLowerCase() === 'pending').map((doc: any, idx: number) => {
                       const fileUrl = doc.storageUrl?.startsWith('http') ? doc.storageUrl.replace('localhost:8443', '127.0.0.1:8080') : `http://127.0.0.1:8080${doc.storageUrl?.startsWith('/') ? '' : '/'}${doc.storageUrl}`;
                       return (
                         <a key={doc.id || idx} href={fileUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1 px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded transition-all border border-indigo-200 text-[10px] font-medium">
@@ -231,11 +337,8 @@ export function PendingRequests({ onNav }: { onNav: (s: string) => void }) {
                 )}
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
-                <button onClick={() => handleApprove(user.userId)} className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl border border-emerald-200 text-xs font-medium transition-all">
-                  <CheckCircle size={13} /> Approve
-                </button>
-                <button onClick={() => handleReject(user.userId)} className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl border border-red-200 text-xs font-medium transition-all">
-                  <XCircle size={13} /> Reject
+                <button onClick={() => openReviewModal(user)} className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold text-xs transition-all shadow-sm">
+                  <Shield size={13} /> Review Case
                 </button>
               </div>
             </div>
@@ -246,60 +349,286 @@ export function PendingRequests({ onNav }: { onNav: (s: string) => void }) {
           <Button onClick={() => setPage(p => p + 1)} disabled={pending.length < 10} variant="outline" size="sm">Next</Button>
         </div>
       </Card>
+
+      {/* Full Per-Document Review Modal */}
+      {reviewUser !== null && createPortal(
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 animate-fade-in" style={{ position: 'fixed', top: 0, left: 0 }}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden scale-in relative block max-h-[90vh] flex flex-col">
+            {/* Modal Header */}
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div>
+                <h3 className="text-lg font-bold text-slate-800">Review Identity Request</h3>
+                <p className="text-xs text-slate-500">User: <span className="font-semibold text-slate-700">{reviewUser.name}</span> ({reviewUser.email})</p>
+              </div>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" onClick={handleApproveAll} className="text-xs text-emerald-600 border-emerald-200 hover:bg-emerald-50">
+                  <CheckCircle size={12} className="mr-1" /> Approve All
+                </Button>
+                <Button size="sm" variant="outline" onClick={handleRejectAll} className="text-xs text-red-600 border-red-200 hover:bg-red-50">
+                  <XCircle size={12} className="mr-1" /> Reject All
+                </Button>
+                <button onClick={() => setReviewUser(null)} className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200 transition-all ml-2">
+                  <XCircle size={20} />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto space-y-4 flex-1">
+              {(() => {
+                const pendingDocs = (reviewUser.documents || []).filter((d: any) => String(d.status).toLowerCase() === 'pending');
+                if (pendingDocs.length === 0) {
+                  return <p className="text-xs text-slate-500 italic text-center p-6">No pending documents require review for this user.</p>;
+                }
+                return pendingDocs.map((doc: any) => {
+                  const dec = docDecisions[doc.id] || { action: 'approve', validUntil: validUntilDefault, reason: '' };
+                  const fileUrl = doc.storageUrl?.startsWith('http')
+                    ? doc.storageUrl.replace('localhost:8443', '127.0.0.1:8080')
+                    : `http://127.0.0.1:8080${doc.storageUrl?.startsWith('/') ? '' : '/'}${doc.storageUrl}`;
+
+                  return (
+                    <div key={doc.id} className={`p-4 rounded-xl border transition-all ${dec.action === 'approve' ? 'border-emerald-200 bg-emerald-50/30' : 'border-red-200 bg-red-50/30'}`}>
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+                        <div className="flex items-center gap-2">
+                          <FileText size={18} className={dec.action === 'approve' ? 'text-emerald-600' : 'text-red-500'} />
+                          <div>
+                            <span className="text-sm font-bold text-slate-800 capitalize">{doc.name || 'Document'}</span>
+                            <span className="text-[10px] text-slate-400 block font-mono">ID: #{doc.id}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <a href={fileUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:text-blue-800 bg-white px-2.5 py-1 rounded-lg border border-slate-200 font-medium shadow-sm transition-all flex items-center gap-1 mr-2">
+                            <Eye size={12} /> View Document
+                          </a>
+                          <div className="flex bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                            <button
+                              type="button"
+                              onClick={() => handleDocActionChange(doc.id, 'approve')}
+                              className={`flex items-center gap-1 text-xs font-semibold px-3 py-1 rounded-md transition-all ${dec.action === 'approve' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                            >
+                              <CheckCircle size={12} /> Approve
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDocActionChange(doc.id, 'reject')}
+                              className={`flex items-center gap-1 text-xs font-semibold px-3 py-1 rounded-md transition-all ${dec.action === 'reject' ? 'bg-red-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                            >
+                              <XCircle size={12} /> Reject
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {dec.action === 'approve' ? (
+                        <div className="bg-white p-3 rounded-lg border border-emerald-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <label className="text-xs font-medium text-slate-600 flex items-center gap-1">
+                            <Clock size={12} className="text-emerald-500" /> Expiry Date (Valid Until):
+                          </label>
+                          <input
+                            type="date"
+                            value={dec.validUntil}
+                            onChange={(e) => handleDocExpiryChange(doc.id, e.target.value)}
+                            className="border border-slate-200 rounded-md px-2.5 py-1 text-xs focus:border-emerald-500 outline-none font-mono"
+                          />
+                        </div>
+                      ) : (
+                        <div className="bg-white p-3 rounded-lg border border-red-100 space-y-1">
+                          <label className="text-xs font-medium text-red-600 flex items-center gap-1">
+                            <XCircle size={12} className="text-red-500" /> Rejection Reason (Required):
+                          </label>
+                          <textarea
+                            rows={2}
+                            value={dec.reason}
+                            onChange={(e) => handleDocReasonChange(doc.id, e.target.value)}
+                            placeholder={`Enter reason for rejecting ${doc.name || 'document'}...`}
+                            className="w-full border border-red-200 rounded-md p-2 text-xs focus:border-red-500 outline-none resize-none"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  );
+                });
+              })()}
+
+              {modalError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600 font-medium">
+                  {modalError}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex gap-3 justify-end">
+              <Button variant="outline" onClick={() => setReviewUser(null)}>Cancel</Button>
+              <button
+                type="button"
+                onClick={handleSubmitReviewModal}
+                disabled={submitting}
+                className="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold px-6 py-2.5 rounded-xl shadow-lg shadow-blue-500/25 border-none transition-all flex items-center gap-2 text-xs font-semibold cursor-pointer disabled:opacity-50"
+              >
+                <CheckCircle size={14} />
+                {submitting ? 'Submitting...' : 'Confirm Decisions'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {toast && <Toast type={toast.type} message={toast.msg} onClose={() => setToast(null)} />}
     </div>
   );
 }
 
 // ── Approve / Reject ──────────────────────────────────────────────────────────
 export function ApproveReject() {
+  const { showAlert, showConfirm } = useDialog();
   const [request, setRequest] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [decision, setDecision] = useState<'approve' | 'reject' | null>(null);
-  const [reason, setReason] = useState('');
   const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
 
-  useEffect(() => {
+  // Per-document decisions: docId -> { action: 'approve'|'reject', validUntil: string, reason: string }
+  const [docDecisions, setDocDecisions] = useState<Record<number, { action: 'approve' | 'reject'; validUntil: string; reason: string }>>({});
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState('');
+
+  const [validUntilDefault] = useState(() => {
+    let d = new Date();
+    d.setFullYear(d.getFullYear() + 1);
+    return d.toISOString().split('T')[0];
+  });
+
+  const loadRequest = () => {
+    setLoading(true);
     adminApi.getPendingRequests(0, 1).then(data => {
       if (data && data.requests && data.requests.length > 0) {
-        setRequest(data.requests[0]);
+        const req = data.requests[0];
+        setRequest(req);
+        // Initialize default decisions (all pending default to 'approve')
+        const initial: Record<number, { action: 'approve' | 'reject'; validUntil: string; reason: string }> = {};
+        (req.documents || []).filter((d: any) => String(d.status).toLowerCase() === 'pending').forEach((d: any) => {
+          initial[d.id] = { action: 'approve', validUntil: validUntilDefault, reason: '' };
+        });
+        setDocDecisions(initial);
+      } else {
+        setRequest(null);
       }
       setLoading(false);
-    }).catch(console.error);
+      // Refresh sidebar badge count
+      window.dispatchEvent(new Event('blockid_pending_update'));
+    }).catch(async err => {
+      console.error(err);
+      setLoading(false);
+    });
+  };
+
+  useEffect(() => {
+    loadRequest();
   }, []);
 
-  const handleSubmit = () => {
+  const handleDocActionChange = (docId: number, action: 'approve' | 'reject') => {
+    setDocDecisions(prev => ({
+      ...prev,
+      [docId]: {
+        ...prev[docId],
+        action,
+        validUntil: prev[docId]?.validUntil || validUntilDefault,
+        reason: prev[docId]?.reason || ''
+      }
+    }));
+    setFormError('');
+  };
+
+  const handleDocExpiryChange = (docId: number, validUntil: string) => {
+    setDocDecisions(prev => ({
+      ...prev,
+      [docId]: { ...prev[docId], validUntil }
+    }));
+  };
+
+  const handleDocReasonChange = (docId: number, reason: string) => {
+    setDocDecisions(prev => ({
+      ...prev,
+      [docId]: { ...prev[docId], reason }
+    }));
+    setFormError('');
+  };
+
+  const handleApproveAll = () => {
+    const updated: Record<number, { action: 'approve' | 'reject'; validUntil: string; reason: string }> = {};
+    Object.keys(docDecisions).forEach(idStr => {
+      const id = Number(idStr);
+      updated[id] = { action: 'approve', validUntil: docDecisions[id]?.validUntil || validUntilDefault, reason: '' };
+    });
+    setDocDecisions(updated);
+  };
+
+  const handleRejectAll = () => {
+    const updated: Record<number, { action: 'approve' | 'reject'; validUntil: string; reason: string }> = {};
+    Object.keys(docDecisions).forEach(idStr => {
+      const id = Number(idStr);
+      updated[id] = { action: 'reject', validUntil: docDecisions[id]?.validUntil || validUntilDefault, reason: docDecisions[id]?.reason || 'Document does not meet compliance requirements.' };
+    });
+    setDocDecisions(updated);
+  };
+
+  const handleSubmitAllDecisions = () => {
     if (!request) return;
-    if (decision === 'reject' && !reason.trim()) {
-      alert('Please provide a rejection reason before rejecting.');
+
+    const pendingDocs = (request.documents || []).filter((d: any) => String(d.status).toLowerCase() === 'pending');
+    if (pendingDocs.length === 0) {
+      setToast({ type: 'error', msg: 'No pending documents to review.' });
       return;
     }
-    const apiCall = decision === 'approve' ? adminApi.approveIdentity(request.userId) : adminApi.rejectIdentity(request.userId, reason);
 
-    apiCall.then(() => {
-      setToast({ type: decision === 'approve' ? 'success' : 'error', msg: `Identity ${decision === 'approve' ? 'approved' : 'rejected'} successfully.` });
-      setTimeout(() => {
-        setToast(null);
-        setRequest(null);
-        setReason('');
-        adminApi.getPendingRequests(0, 1).then(data => {
-          if (data && data.requests && data.requests.length > 0) setRequest(data.requests[0]);
-        });
-      }, 2000);
-      setDecision(null);
-    }).catch(console.error);
+    // Validate that all rejected documents have a reason
+    for (const doc of pendingDocs) {
+      const dec = docDecisions[doc.id];
+      if (dec && dec.action === 'reject' && !dec.reason.trim()) {
+        setFormError(`Please provide a rejection reason for "${doc.name || 'Document'}".`);
+        return;
+      }
+    }
+
+    setSubmitting(true);
+    const payload = pendingDocs.map((doc: any) => {
+      const dec = docDecisions[doc.id] || { action: 'approve', validUntil: validUntilDefault, reason: '' };
+      return {
+        docId: String(doc.id),
+        decision: dec.action,
+        validUntil: dec.action === 'approve' ? dec.validUntil : undefined,
+        reason: dec.action === 'reject' ? dec.reason : undefined
+      };
+    });
+
+    adminApi.reviewDocuments(request.userId, payload)
+      .then(res => {
+        setToast({ type: 'success', msg: `Review complete: ${res.approved} approved, ${res.rejected} rejected.` });
+        window.dispatchEvent(new Event('blockid_pending_update'));
+        setTimeout(async () => {
+          setToast(null);
+          loadRequest();
+        }, 2000);
+      })
+      .catch(async err => {
+        setToast({ type: 'error', msg: 'Review error: ' + err.message });
+      })
+      .finally(() => setSubmitting(false));
   };
 
   if (loading) return <div className="p-8 text-center text-slate-500">Loading pending requests...</div>;
   if (!request) return <div className="p-8 text-center text-emerald-600 font-semibold bg-emerald-50 rounded-xl border border-emerald-200 m-8">Zero pending requests in queue!</div>;
 
   const initials = request.name?.substring(0, 2).toUpperCase() || 'U';
+  const pendingDocs = (request.documents || []).filter((d: any) => String(d.status).toLowerCase() === 'pending');
 
   return (
     <div className="animate-fade-in space-y-6">
       <SectionHeader title="Review Identity Request" subtitle={`Case #REQ-${request.userId} · Submitted ${new Date(request.submittedAt).toLocaleDateString()}`} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* User info */}
+        {/* User info & AI score */}
         <div className="space-y-4">
           <Card className="p-5">
             <div className="flex items-center gap-3 mb-4">
@@ -315,7 +644,7 @@ export function ApproveReject() {
                 { label: 'DID', value: request.did || 'Not Generated' },
                 { label: 'Platform ID', value: `UID-${request.userId}` },
                 { label: 'Submitted', value: new Date(request.submittedAt).toLocaleDateString() },
-                { label: 'Documents', value: `${request.documents?.length || 0} uploaded` },
+                { label: 'Pending Docs', value: `${pendingDocs.length} pending review` },
               ].map(f => (
                 <div key={f.label} className="flex justify-between py-1.5 border-b border-slate-100 last:border-0 text-xs">
                   <span className="text-slate-400">{f.label}</span>
@@ -325,7 +654,7 @@ export function ApproveReject() {
             </div>
           </Card>
 
-          {/* AI check - computed from real user data */}
+          {/* AI check */}
           {(() => {
             const docCount = request.documents?.length || 0;
             const docScore = Math.min(100, docCount >= 3 ? 95 : docCount === 2 ? 80 : docCount === 1 ? 55 : 10);
@@ -365,84 +694,119 @@ export function ApproveReject() {
           })()}
         </div>
 
-        {/* Documents */}
-        <Card className="p-5">
-          <h3 className="text-sm font-semibold text-slate-800 mb-4">Submitted Documents</h3>
-          <div className="space-y-3">
-            {request.documents && request.documents.map((doc: any, i: number) => {
-              const fileUrl = doc.storageUrl?.startsWith('http') ? doc.storageUrl.replace('localhost:8443', '127.0.0.1:8080') : `http://127.0.0.1:8080${doc.storageUrl?.startsWith('/') ? '' : '/'}${doc.storageUrl}`;
-              return (
-                <div key={i} className={`p-4 rounded-xl border border-blue-200 bg-blue-50`}>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-slate-800 capitalize">{doc.name || 'Document'}</span>
-                    <a href={fileUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:text-blue-800 bg-white px-3 py-1 rounded-full border border-blue-100 font-medium shadow-sm transition-all flex items-center gap-1.5">
-                      <Eye size={12} /> View Full
-                    </a>
-                  </div>
-                  {/* Document preview placeholder wrapper */}
-                  <a href={fileUrl} target="_blank" rel="noreferrer" className="block w-full h-24 bg-white/80 rounded-xl border border-white/60 flex items-center justify-center text-slate-400 hover:bg-white hover:text-blue-500 transition-all cursor-pointer">
-                    <div className="text-center">
-                      <FileText size={20} className="mx-auto mb-1 opacity-50" />
-                      <p className="text-[10px]">Click to open secure document</p>
-                    </div>
-                  </a>
-                </div>
-              );
-            })}
-            {(!request.documents || request.documents.length === 0) && (
-              <p className="text-xs text-slate-500 italic p-4 text-center">No documents uploaded.</p>
-            )}
-          </div>
-        </Card>
-
-        {/* Decision */}
-        <div className="space-y-4">
+        {/* Per-Document Review List */}
+        <div className="lg:col-span-2 space-y-4">
           <Card className="p-5">
-            <h3 className="text-sm font-semibold text-slate-800 mb-4">Admin Decision</h3>
-            <div className="space-y-2 mb-4">
-              <button onClick={() => setDecision('approve')} className={`w-full flex items-center gap-3 p-3 rounded-xl border transition-all ${decision === 'approve' ? 'border-emerald-500 bg-emerald-50' : 'border-slate-200 hover:border-emerald-300'}`}>
-                <CheckCircle size={18} className={decision === 'approve' ? 'text-emerald-600' : 'text-slate-400'} />
-                <div className="text-left">
-                  <p className={`text-sm font-medium ${decision === 'approve' ? 'text-emerald-700' : 'text-slate-700'}`}>Approve Identity</p>
-                  <p className="text-xs text-slate-400">Verify and anchor to blockchain</p>
-                </div>
-              </button>
-              <button onClick={() => setDecision('reject')} className={`w-full flex items-center gap-3 p-3 rounded-xl border transition-all ${decision === 'reject' ? 'border-red-400 bg-red-50' : 'border-slate-200 hover:border-red-300'}`}>
-                <XCircle size={18} className={decision === 'reject' ? 'text-red-500' : 'text-slate-400'} />
-                <div className="text-left">
-                  <p className={`text-sm font-medium ${decision === 'reject' ? 'text-red-600' : 'text-slate-700'}`}>Reject Request</p>
-                  <p className="text-xs text-slate-400">Notify user with reason</p>
-                </div>
-              </button>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-800">Per-Document Review</h3>
+                <p className="text-xs text-slate-400">Approve or reject each document individually with specific reasons</p>
+              </div>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" onClick={handleApproveAll} className="text-xs text-emerald-600 border-emerald-200 hover:bg-emerald-50">
+                  <CheckCircle size={12} className="mr-1" /> Approve All
+                </Button>
+                <Button size="sm" variant="outline" onClick={handleRejectAll} className="text-xs text-red-600 border-red-200 hover:bg-red-50">
+                  <XCircle size={12} className="mr-1" /> Reject All
+                </Button>
+              </div>
             </div>
 
-            <div className="mb-4">
-              <label className="block text-xs font-medium text-slate-700 mb-1.5">Notes / Reason</label>
-              <textarea
-                value={reason}
-                onChange={e => setReason(e.target.value)}
-                placeholder="Add admin notes or rejection reason..."
-                rows={3}
-                className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-              />
-            </div>
+            <div className="space-y-4">
+              {pendingDocs.map((doc: any) => {
+                const dec = docDecisions[doc.id] || { action: 'approve', validUntil: validUntilDefault, reason: '' };
+                const fileUrl = doc.storageUrl?.startsWith('http')
+                  ? doc.storageUrl.replace('localhost:8443', '127.0.0.1:8080')
+                  : `http://127.0.0.1:8080${doc.storageUrl?.startsWith('/') ? '' : '/'}${doc.storageUrl}`;
 
-            <Button onClick={handleSubmit} disabled={!decision} className="w-full justify-center" variant={decision === 'approve' ? 'primary' : 'danger'}>
-              {decision === 'approve' ? <><CheckCircle size={14} /> Approve Identity</> : decision === 'reject' ? <><XCircle size={14} /> Reject Request</> : 'Select Decision'}
-            </Button>
-          </Card>
+                return (
+                  <div key={doc.id} className={`p-4 rounded-xl border transition-all ${dec.action === 'approve' ? 'border-emerald-200 bg-emerald-50/30' : 'border-red-200 bg-red-50/30'}`}>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+                      <div className="flex items-center gap-2">
+                        <FileText size={18} className={dec.action === 'approve' ? 'text-emerald-600' : 'text-red-500'} />
+                        <div>
+                          <span className="text-sm font-bold text-slate-800 capitalize">{doc.name || 'Document'}</span>
+                          <span className="text-[10px] text-slate-400 block font-mono">ID: #{doc.id}</span>
+                        </div>
+                      </div>
 
-          <Card className="p-4">
-            <h4 className="text-xs font-semibold text-slate-600 mb-3">Review Checklist</h4>
-            <div className="space-y-2">
-              {['Document authenticity verified', 'Face match confirmed', 'Address validated', 'No fraud indicators'].map((item, i) => (
-                <label key={i} className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer">
-                  <div className="w-4 h-4 rounded border-2 border-emerald-400 bg-emerald-50 flex items-center justify-center flex-shrink-0">
-                    <CheckCircle size={10} className="text-emerald-500" />
+                      <div className="flex items-center gap-2">
+                        <a href={fileUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:text-blue-800 bg-white px-2.5 py-1 rounded-lg border border-slate-200 font-medium shadow-sm transition-all flex items-center gap-1 mr-2">
+                          <Eye size={12} /> View
+                        </a>
+                        {/* Per-Document Decision Toggle */}
+                        <div className="flex bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                          <button
+                            type="button"
+                            onClick={() => handleDocActionChange(doc.id, 'approve')}
+                            className={`flex items-center gap-1 text-xs font-semibold px-3 py-1 rounded-md transition-all ${dec.action === 'approve' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                          >
+                            <CheckCircle size={12} /> Approve
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDocActionChange(doc.id, 'reject')}
+                            className={`flex items-center gap-1 text-xs font-semibold px-3 py-1 rounded-md transition-all ${dec.action === 'reject' ? 'bg-red-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                          >
+                            <XCircle size={12} /> Reject
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Conditional Input based on decision */}
+                    {dec.action === 'approve' ? (
+                      <div className="bg-white p-3 rounded-lg border border-emerald-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <label className="text-xs font-medium text-slate-600 flex items-center gap-1">
+                          <Clock size={12} className="text-emerald-500" /> Expiry Date (Valid Until):
+                        </label>
+                        <input
+                          type="date"
+                          value={dec.validUntil}
+                          onChange={(e) => handleDocExpiryChange(doc.id, e.target.value)}
+                          className="border border-slate-200 rounded-md px-2.5 py-1 text-xs focus:border-emerald-500 outline-none font-mono"
+                        />
+                      </div>
+                    ) : (
+                      <div className="bg-white p-3 rounded-lg border border-red-100 space-y-1">
+                        <label className="text-xs font-medium text-red-600 flex items-center gap-1">
+                          <XCircle size={12} className="text-red-500" /> Rejection Reason (Required):
+                        </label>
+                        <textarea
+                          rows={2}
+                          value={dec.reason}
+                          onChange={(e) => handleDocReasonChange(doc.id, e.target.value)}
+                          placeholder={`Enter reason for rejecting ${doc.name || 'document'} (e.g., Image too blurry, expired document, missing signature)...`}
+                          className="w-full border border-red-200 rounded-md p-2 text-xs focus:border-red-500 outline-none resize-none"
+                        />
+                      </div>
+                    )}
                   </div>
-                  {item}
-                </label>
-              ))}
+                );
+              })}
+
+              {pendingDocs.length === 0 && (
+                <p className="text-xs text-slate-500 italic p-6 text-center">No pending documents to review.</p>
+              )}
+            </div>
+
+            {formError && (
+              <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600 font-medium">
+                {formError}
+              </div>
+            )}
+
+            {/* Submit All Decisions */}
+            <div className="mt-6 pt-4 border-t border-slate-100 flex justify-end">
+              <button
+                type="button"
+                onClick={handleSubmitAllDecisions}
+                disabled={submitting || pendingDocs.length === 0}
+                className="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold px-7 py-3 rounded-xl shadow-lg shadow-blue-500/25 border-none transition-all flex items-center gap-2 text-sm cursor-pointer disabled:opacity-50"
+              >
+                <CheckCircle size={16} />
+                {submitting ? 'Processing Review Decisions...' : `Submit Decisions (${pendingDocs.length} Document${pendingDocs.length > 1 ? 's' : ''})`}
+              </button>
             </div>
           </Card>
         </div>
@@ -455,6 +819,7 @@ export function ApproveReject() {
 
 // ── User Management ────────────────────────────────────────────────────────────
 export function UserManagement({ onNav }: { onNav?: (s: string) => void }) {
+  const { showAlert, showConfirm } = useDialog();
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [page, setPage] = useState(1);
@@ -465,7 +830,7 @@ export function UserManagement({ onNav }: { onNav?: (s: string) => void }) {
   const [totalItems, setTotalItems] = useState(0);
 
   // New user form state
-  const [newUser, setNewUser] = useState({ firstName: '', lastName: '', email: '', password: '', role: 'user' });
+  const [newUser, setNewUser] = useState({ name: '', email: '', phone: '', password: '', role: 'user' });
   const [isCreating, setIsCreating] = useState(false);
 
   const fetchUsers = () => {
@@ -482,31 +847,32 @@ export function UserManagement({ onNav }: { onNav?: (s: string) => void }) {
   }, [search, page]);
 
   const handleCreateUser = async () => {
-    if (!newUser.firstName || !newUser.email || !newUser.password) return alert('Name, email, and password are required');
+    if (!newUser.name || !newUser.email || !newUser.password) return await showAlert('Name, email, and password are required');
     setIsCreating(true);
     try {
       const response = await authApi.register({
-        name: `${newUser.firstName} ${newUser.lastName}`.trim(),
+        name: newUser.name.trim(),
         email: newUser.email,
+        phone: newUser.phone,
         password: newUser.password,
         role: newUser.role,
         country: 'Global' // Default metadata
       });
-      alert(`Successfully created ${newUser.role}: ${response.email || newUser.email}\nThey can now sign in with their password.`);
+      await showAlert(`Successfully created ${newUser.role}: ${response.email || newUser.email}\nThey can now sign in with their password.`);
       setShowModal(false);
-      setNewUser({ firstName: '', lastName: '', email: '', password: '', role: 'user' });
+      setNewUser({ name: '', email: '', phone: '', password: '', role: 'user' });
       fetchUsers(); // Refresh table from DB
     } catch (err: any) {
       console.error(err);
-      alert(err.message || 'Failed to create user. Ensure email is unique.');
+      await showAlert(err.message || 'Failed to create user. Ensure email is unique.');
     } finally {
       setIsCreating(false);
     }
   };
 
-  const handleExport = () => {
+  const handleExport = async () => {
     if (!users || users.length === 0) {
-      alert("No users to export");
+      await showAlert("No users to export");
       return;
     }
     const headers = ['ID', 'Name', 'Email', 'Role', 'Status', 'DID', 'JoinDate', 'DocumentsCount'];
@@ -572,30 +938,61 @@ export function UserManagement({ onNav }: { onNav?: (s: string) => void }) {
                   <td className="py-3 pr-4 text-xs text-slate-500">{user.lastLogin ? user.lastLogin.split('T')[0] : 'Never'}</td>
                   <td className="py-3 pr-4">
                     <div className="flex gap-1">
-                      <button onClick={() => {
+                      <button onClick={async () => {
                         sessionStorage.setItem('inspect_user_id', String(user.id));
                         if (onNav) onNav('identity-details');
-                        else alert("Navigation function missing. Use the sidebar.");
+                        else await showAlert("Navigation function missing. Use the sidebar.");
                       }} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all" title="View Details"><Eye size={13} /></button>
 
-                      <button onClick={() => {
+                      <button onClick={async () => {
                         setEditingUser(user);
                         setNewRole((user.role || 'user').toLowerCase());
                       }} className="p-1.5 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg transition-all" title="Edit Role"><Edit size={13} /></button>
 
-                      <button onClick={() => {
-                        const r = (user.role || '').toLowerCase();
-                        if (r === 'admin' || r === 'verifier') {
-                          alert(`For security reasons, system ${r} accounts cannot be deleted.`);
-                          return;
-                        }
-                        if (window.confirm(`Are you sure you want to PERMANENTLY delete ${user.name}? This will remove all their documents, identity records, and data from the database forever.`)) {
-                          adminApi.deleteUser(user.id).then(() => {
+                      {user.status === 'suspended' ? (
+                        <button onClick={async () => {
+                          adminApi.updateStatus(user.id, 'pending').then(async () => {
                             fetchUsers();
-                            alert(`${user.name} has been permanently deleted.`);
-                          }).catch(err => {
+                            await showAlert(`${user.name} has been unblocked and set to pending review.`);
+                          }).catch(async err => {
+                            await showAlert(`Failed to unblock user: ${err.message}`);
+                          });
+                        }} className="p-1.5 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-all" title="Unblock User"><CheckCircle size={13} /></button>
+                      ) : (
+                        <button onClick={async () => {
+                          const r = (user.role || '').toLowerCase();
+                          if (r === 'admin' || r === 'verifier') {
+                            await showAlert(`For security reasons, system ${r} accounts cannot be suspended or blocked.`);
+                            return;
+                          }
+                          if (await showConfirm(`Are you sure you want to temporarily suspend ${user.name}? They will be unable to log in.`)) {
+                            adminApi.updateStatus(user.id, 'suspended').then(async () => {
+                              fetchUsers();
+                              await showAlert(`${user.name} has been temporarily blocked.`);
+                            }).catch(async err => {
+                              await showAlert(`Failed to block user: ${err.message}`);
+                            });
+                          }
+                        }} className="p-1.5 text-slate-400 hover:text-orange-500 hover:bg-orange-50 rounded-lg transition-all" title="Temporarily Block User"><Lock size={13} /></button>
+                      )}
+
+                      <button onClick={async () => {
+                        const r = (user.role || '').toLowerCase();
+                        let isSystemRole = r === 'admin' || r === 'verifier';
+
+                        if (isSystemRole) {
+                          if (!(await showConfirm(`CRITICAL WARNING: You are attempting to delete a system ${r.toUpperCase()} account (${user.name}). This is highly destructive. Proceed?`))) {
+                            return;
+                          }
+                        }
+
+                        if (await showConfirm(`Are you sure you want to PERMANENTLY delete ${user.name}? This will remove all their documents, identity records, and data from the database forever.`)) {
+                          adminApi.deleteUser(user.id).then(async () => {
+                            fetchUsers();
+                            await showAlert(`${user.name} has been permanently deleted.`);
+                          }).catch(async err => {
                             console.error(err);
-                            alert(`Failed to delete user. Technical details:\n\n${err.message || JSON.stringify(err)}`);
+                            await showAlert(`Failed to delete user. Technical details:\n\n${err.message || JSON.stringify(err)}`);
                           });
                         }
                       }} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all" title="Delete User"><Trash2 size={13} /></button>
@@ -621,16 +1018,16 @@ export function UserManagement({ onNav }: { onNav?: (s: string) => void }) {
             onChange={setNewRole}
           />
           <div className="flex gap-2 pt-2">
-            <Button className="flex-1 justify-center" onClick={() => {
+            <Button className="flex-1 justify-center" onClick={async () => {
               adminApi.updateRole(editingUser.id, newRole.toUpperCase())
-                .then(() => {
-                  alert('Role updated successfully');
+                .then(async () => {
+                  await showAlert('Role updated successfully');
                   fetchUsers();
                   setEditingUser(null);
                 })
-                .catch(err => {
+                .catch(async err => {
                   console.error(err);
-                  alert('Failed to update role');
+                  await showAlert('Failed to update role');
                 });
             }}>
               Update Role
@@ -642,16 +1039,16 @@ export function UserManagement({ onNav }: { onNav?: (s: string) => void }) {
 
       <Modal open={showModal} onClose={() => setShowModal(false)} title="Add New User">
         <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <Input label="First Name" placeholder="Jane" value={newUser.firstName} onChange={(val) => setNewUser({ ...newUser, firstName: val })} />
-            <Input label="Last Name" placeholder="Doe" value={newUser.lastName} onChange={(val) => setNewUser({ ...newUser, lastName: val })} />
+          <Input label="Name" placeholder="Enter your name" value={newUser.name} onChange={(val) => setNewUser({ ...newUser, name: val })} />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Input label="Email Address" type="email" placeholder="Enter your email" value={newUser.email} onChange={(val) => setNewUser({ ...newUser, email: val })} />
+            <Input label="Phone Number" type="tel" placeholder="Enter your mobile number" value={newUser.phone} onChange={(val) => setNewUser({ ...newUser, phone: val })} />
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Input label="Email Address" type="email" placeholder="jane@company.com" value={newUser.email} onChange={(val) => setNewUser({ ...newUser, email: val })} />
-            <Input label="Temporary Password" type="password" placeholder="Min 6 characters" value={newUser.password} onChange={(val) => setNewUser({ ...newUser, password: val })} />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Input label="Password" type="password" placeholder="Create password" value={newUser.password} onChange={(val) => setNewUser({ ...newUser, password: val })} />
+            <Select label="Role" options={[{ value: 'user', label: 'User' }, { value: 'admin', label: 'Admin' }, { value: 'verifier', label: 'Verifier' }]} value={newUser.role} onChange={(val) => setNewUser({ ...newUser, role: val })} />
           </div>
-          <Select label="Role" options={[{ value: 'user', label: 'User' }, { value: 'admin', label: 'Admin' }, { value: 'verifier', label: 'Verifier' }]} value={newUser.role} onChange={(val) => setNewUser({ ...newUser, role: val })} />
-          <div className="flex gap-2 pt-2">
+          <div className="flex gap-2 pt-1">
             <Button className="flex-1 justify-center" onClick={handleCreateUser} disabled={isCreating}>
               {isCreating ? 'Provisioning...' : 'Create User'}
             </Button>
@@ -665,6 +1062,7 @@ export function UserManagement({ onNav }: { onNav?: (s: string) => void }) {
 
 // ── Blockchain Explorer ────────────────────────────────────────────────────────
 export function BlockchainExplorer() {
+  const { showAlert, showConfirm } = useDialog();
   const [blocks, setBlocks] = useState<any[]>([]);
   const [selectedBlock, setSelectedBlock] = useState<any | null>(null);
 
@@ -673,7 +1071,7 @@ export function BlockchainExplorer() {
       const blocksArray = Array.isArray(res) ? res : [];
       setBlocks(blocksArray);
       if (blocksArray.length > 0) setSelectedBlock(blocksArray[0]);
-    }).catch(err => {
+    }).catch(async err => {
       console.error(err);
       setBlocks([]);
     });
@@ -808,6 +1206,7 @@ export function BlockchainExplorer() {
 
 // ── Identity Details ──────────────────────────────────────────────────────────
 export function IdentityDetails() {
+  const { showAlert, showConfirm } = useDialog();
   const [candidate, setCandidate] = useState<any>(null);
   const [details, setDetails] = useState<any>(null);
   const [allUsers, setAllUsers] = useState<any[]>([]);
@@ -942,6 +1341,7 @@ export function IdentityDetails() {
 
 // ── Analytics ─────────────────────────────────────────────────────────────────
 export function AnalyticsDashboard() {
+  const { showAlert, showConfirm } = useDialog();
   const [stats, setStats] = useState<any>({
     totalUsers: 0, totalVerified: 0, pendingVerification: 0, rejectedRequests: 0, blockchainBlocks: 0, todayVerifications: 0
   });
@@ -1023,6 +1423,7 @@ export function AnalyticsDashboard() {
 
 // ── Audit Logs ────────────────────────────────────────────────────────────────
 export function AuditLogs() {
+  const { showAlert, showConfirm } = useDialog();
   const [search, setSearch] = useState('');
   const [severity, setSeverity] = useState('all');
   const [page, setPage] = useState(1);
@@ -1140,11 +1541,12 @@ export function AuditLogs() {
 
 // ── Reports ────────────────────────────────────────────────────────────────────
 export function Reports() {
+  const { showAlert, showConfirm } = useDialog();
   const [downloading, setDownloading] = useState<string | null>(null);
 
-  const downloadCSV = (filename: string, data: any[]) => {
+  const downloadCSV = async (filename: string, data: any[]) => {
     if (!data || data.length === 0) {
-      alert('No data available for this report.');
+      await showAlert('No data available for this report.');
       return;
     }
     const headers = Object.keys(data[0]);
@@ -1191,13 +1593,13 @@ export function Reports() {
           data = auditRes.logs || [];
           break;
         default:
-          alert('Report generation for this module is currently running in the background. Check scheduled tasks.');
+          await showAlert('Report generation for this module is currently running in the background. Check scheduled tasks.');
           return;
       }
       downloadCSV(title.replace(/\s+/g, '_').toLowerCase(), data);
     } catch (err: any) {
       console.error(err);
-      alert('Failed to generate report: ' + err.message);
+      await showAlert('Failed to generate report: ' + err.message);
     } finally {
       setDownloading(null);
     }
@@ -1259,6 +1661,7 @@ export function Reports() {
 
 // ── Security Settings ──────────────────────────────────────────────────────────
 export function SecuritySettings() {
+  const { showAlert, showConfirm } = useDialog();
   const loadState = (key: string, def: any) => {
     const saved = localStorage.getItem(`sec_setting_${key}`);
     return saved !== null ? JSON.parse(saved) : def;
@@ -1291,11 +1694,11 @@ export function SecuritySettings() {
   const [showPolicyModal, setShowPolicyModal] = useState(false);
   const [draftPolicy, setDraftPolicy] = useState(policy);
 
-  const handleUpdatePolicy = () => {
+  const handleUpdatePolicy = async () => {
     const updated = saveState('policy', draftPolicy);
     setPolicy(updated);
     setShowPolicyModal(false);
-    alert('Password Policy successfully deployed to all network nodes.');
+    await showAlert('Password Policy successfully deployed to all network nodes.');
   };
 
   const toggleThreat = (label: string) => {
@@ -1349,7 +1752,7 @@ export function SecuritySettings() {
               </div>
             ))}
           </div>
-          <Button size="sm" className="mt-4" onClick={() => { setDraftPolicy(policy); setShowPolicyModal(true); }}>Modify Policy</Button>
+          <Button size="sm" className="mt-4" onClick={async () => { setDraftPolicy(policy); setShowPolicyModal(true); }}>Modify Policy</Button>
         </Card>
 
         <Card className="p-5">
@@ -1420,6 +1823,183 @@ export function SecuritySettings() {
           </div>
         </div>
       </Modal>
+    </div>
+  );
+}
+// ── Admin Messages / Inbox ───────────────────────────────────────────────────────────
+export function AdminMessages() {
+  const [messages, setMessages] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedMsg, setSelectedMsg] = useState<any | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const { showAlert, showConfirm } = useDialog();
+  const [toast, setToast] = useState('');
+
+  const fetchMessages = () => {
+    setLoading(true);
+    adminApi.getAuditLogs(0, 100, '').then(res => {
+      // Filter logs to act as an inbox for Support and Security
+      const inboxes = res.logs.filter(l => l.module === 'Support' || l.module === 'Security');
+      // Sort by newest
+      setMessages(inboxes.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+      setLoading(false);
+    }).catch(err => {
+      console.error(err);
+      setLoading(false);
+    });
+  };
+
+  useEffect(() => {
+    fetchMessages();
+  }, []);
+
+  const handleDelete = async (id: number) => {
+    const confirmed = await showConfirm("Are you sure you want to permanently delete this message? This cannot be undone.");
+    if (confirmed) {
+      try {
+        await adminApi.deleteAuditLog(id);
+        setToast('Message deleted successfully');
+        if (selectedMsg?.id === id) setSelectedMsg(null);
+        setSelectedIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+        fetchMessages();
+        setTimeout(() => setToast(''), 3000);
+      } catch (err: any) {
+        console.error(err);
+        showAlert('Failed to delete message: ' + err.message);
+      }
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    const confirmed = await showConfirm(`Are you sure you want to permanently delete ${selectedIds.size} messages? This cannot be undone.`);
+    if (confirmed) {
+      setLoading(true);
+      try {
+        await Promise.all(Array.from(selectedIds).map(id => adminApi.deleteAuditLog(id)));
+        setToast(`Successfully deleted ${selectedIds.size} messages.`);
+        if (selectedMsg && selectedIds.has(selectedMsg.id)) setSelectedMsg(null);
+        setSelectedIds(new Set());
+        fetchMessages();
+        setTimeout(() => setToast(''), 3000);
+      } catch (err: any) {
+        console.error(err);
+        showAlert('Failed to delete some messages: ' + err.message);
+        setLoading(false);
+      }
+    }
+  };
+
+  return (
+    <div className="animate-fade-in space-y-6">
+      <SectionHeader title="Verifier Inbox & Security Alerts" subtitle="Direct secure messaging channel with Verifier Agents" action={<Button size="sm" onClick={fetchMessages}><RefreshCw size={14} /> Refresh Inbox</Button>} />
+
+      {toast && (
+        <div className="p-3 bg-emerald-50 text-emerald-700 text-sm font-medium rounded-xl border border-emerald-200 flex items-center justify-between">
+          <span>{toast}</span>
+          <CheckCircle size={16} />
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[600px]">
+        {/* Inbox List */}
+        <Card className="lg:col-span-1 p-0 overflow-hidden flex flex-col h-full border-r-0 lg:border-r border-slate-200 rounded-xl lg:rounded-r-none">
+          <div className="p-4 bg-slate-50 border-b border-slate-100 font-semibold text-slate-700 flex justify-between items-center text-sm">
+            <div className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                className="w-3.5 h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                checked={selectedIds.size === messages.length && messages.length > 0}
+                onChange={(e) => {
+                  if (e.target.checked) setSelectedIds(new Set(messages.map(m => m.id)));
+                  else setSelectedIds(new Set());
+                }}
+              />
+              <span>Inbox ({messages.length})</span>
+            </div>
+            {selectedIds.size > 0 ? (
+              <button onClick={handleBulkDelete} title="Delete Selected" className="text-red-500 hover:bg-red-50 rounded-lg p-1 transition-colors"><Trash2 size={16} /></button>
+            ) : (
+              <Inbox size={16} className="text-slate-400" />
+            )}
+          </div>
+          <div className="flex-1 overflow-y-auto w-full">
+            {loading ? (
+              <div className="p-10 flex justify-center"><div className="animate-spin-custom w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full" /></div>
+            ) : messages.length === 0 ? (
+              <div className="p-10 text-center text-slate-400 text-sm">No new messages.</div>
+            ) : (
+              messages.map(msg => (
+                <div key={msg.id} onClick={() => setSelectedMsg(msg)} className={`p-4 border-b border-slate-50 cursor-pointer transition-all w-full text-left ${selectedMsg?.id === msg.id ? 'bg-blue-50 border-l-4 border-l-blue-600 pl-3' : 'hover:bg-slate-50 border-l-4 border-l-transparent pl-3'}`}>
+                  <div className="flex justify-between items-start mb-1">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        onClick={e => e.stopPropagation()}
+                        onChange={(e) => {
+                          const newSet = new Set(selectedIds);
+                          if (e.target.checked) newSet.add(msg.id);
+                          else newSet.delete(msg.id);
+                          setSelectedIds(newSet);
+                        }}
+                        checked={selectedIds.has(msg.id)}
+                        className="w-3.5 h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                      />
+                      <p className="text-xs font-bold text-slate-800 truncate">{msg.actor}</p>
+                    </div>
+                    <span className="text-[9px] text-slate-400 whitespace-nowrap ml-2">{msg.timestamp.split('T')[0]}</span>
+                  </div>
+                  <p className={`text-xs font-medium truncate ${msg.module === 'Security' ? 'text-red-600' : 'text-slate-700'}`}>{msg.action.replace('Support Ticket: ', '')}</p>
+                  <p className="text-[10px] text-slate-500 truncate mt-1">{msg.target.replace('Message: ', '')}</p>
+                </div>
+              ))
+            )}
+          </div>
+        </Card>
+
+        {/* Message Viewer */}
+        <Card className="lg:col-span-2 p-0 flex flex-col h-full rounded-xl lg:rounded-l-none border-l-0">
+          {selectedMsg ? (
+            <div className="flex flex-col h-full w-full">
+              <div className="p-5 border-b border-slate-100">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h2 className="text-lg font-bold text-slate-800">{selectedMsg.action.replace('Support Ticket: ', '')}</h2>
+                    <div className="flex items-center gap-2 mt-2">
+                      <Avatar initials={selectedMsg.actor.charAt(0)} size="sm" />
+                      <div>
+                        <p className="text-xs font-bold text-slate-700">{selectedMsg.actor} <span className="text-slate-400 font-normal">({selectedMsg.ipAddress})</span></p>
+                        <p className="text-[10px] text-slate-400">Received: {selectedMsg.timestamp.replace('T', ' ')}</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider border ${selectedMsg.module === 'Security' ? 'bg-red-50 text-red-600 border-red-200' : 'bg-blue-50 text-blue-600 border-blue-200'}`}>
+                      {selectedMsg.module}
+                    </span>
+                    <button onClick={() => handleDelete(selectedMsg.id)} title="Delete Message" className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors border border-transparent hover:border-red-200">
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div className="flex-1 p-6 overflow-y-auto bg-slate-50/50">
+                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm whitespace-pre-wrap text-sm text-slate-700 leading-relaxed font-mono">
+                  {selectedMsg.target.replace('Message: ', '')}
+                </div>
+              </div>
+              <div className="p-4 border-t border-slate-100 bg-white">
+                <Button className="w-full justify-center" onClick={() => showAlert('Automated reply sent to ' + selectedMsg.actor)}><MessageSquare size={14} /> Mark as Resolved & Reply</Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center text-slate-400 w-full h-full p-10">
+              <Inbox size={48} className="mb-4 opacity-20" />
+              <p className="text-sm">Select a message from the inbox to read</p>
+            </div>
+          )}
+        </Card>
+      </div>
     </div>
   );
 }

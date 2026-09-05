@@ -130,4 +130,14 @@ public class IdentityRecord {
     public void setRejectedReason(String rejectedReason) {
         this.rejectedReason = rejectedReason;
     }
+
+    private String validUntil;
+
+    public String getValidUntil() {
+        return validUntil;
+    }
+
+    public void setValidUntil(String validUntil) {
+        this.validUntil = validUntil;
+    }
 }

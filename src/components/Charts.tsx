@@ -29,8 +29,8 @@ export function VerificationAreaChart({ data }: { data?: any[] }) {
         <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#94A3B8' }} axisLine={false} tickLine={false} />
         <YAxis tick={{ fontSize: 11, fill: '#94A3B8' }} axisLine={false} tickLine={false} />
         <Tooltip contentStyle={tooltipStyle} />
-        <Area type="monotone" dataKey="verifications" name="Verifications" stroke="#1D4ED8" strokeWidth={2} fill="url(#colorVer)" />
         <Area type="monotone" dataKey="registrations" name="Registrations" stroke="#06B6D4" strokeWidth={2} fill="url(#colorReg)" />
+        <Area type="monotone" dataKey="verifications" name="Verifications" stroke="#1D4ED8" strokeWidth={2} fill="url(#colorVer)" />
       </AreaChart>
     </ResponsiveContainer>
   );

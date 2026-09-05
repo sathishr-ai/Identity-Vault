@@ -22,6 +22,10 @@ public class CustomUserDetailsService implements UserDetailsService {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found with email: " + email));
 
+        if ("suspended".equalsIgnoreCase(user.getStatus())) {
+            throw new org.springframework.security.authentication.LockedException("Account is suspended.");
+        }
+
         return new org.springframework.security.core.userdetails.User(
                 user.getEmail(),
                 user.getPassword(),

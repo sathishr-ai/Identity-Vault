@@ -1,0 +1,48 @@
+[36mvite v8.1.5 [32mbuilding client environment for production...[36m[39m
+[2K
+transforming...Γ£ô 2358 modules transformed.
+Γ£ù Build failed in 760ms
+error during build:
+Build failed with 3 errors:
+
+[builtin:vite-transform] `await` is only allowed within async functions and at the top levels of modules
+     Γò¡ΓöÇ[ src/screens/AuthScreens.tsx:494:9 ]
+     Γöé
+ 494 Γöé         await showAlert(res.message);
+     Γöé         ΓöÇΓöÇΓö¼ΓöÇΓöÇ  
+     Γöé           Γò░ΓöÇΓöÇΓöÇΓöÇ 
+     Γöé 
+     Γöé Help: Either remove this `await` or add the `async` keyword to the enclosing function
+ΓöÇΓöÇΓöÇΓöÇΓöÇΓò»
+
+[PARSE_ERROR] Identifier `showAlert` has already been declared
+      Γò¡ΓöÇ[ src/screens/AdminScreens.tsx:2510:10 ]
+      Γöé
+ 2510 Γöé     const { showAlert, showConfirm } = useDialog();
+      Γöé             ΓöÇΓöÇΓöÇΓöÇΓö¼ΓöÇΓöÇΓöÇΓöÇ  
+      Γöé                 Γò░ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ `showAlert` has already been declared here
+ 2511 Γöé     const { showAlert, showConfirm } = useDialog();
+      Γöé             ΓöÇΓöÇΓöÇΓöÇΓö¼ΓöÇΓöÇΓöÇΓöÇ  
+      Γöé                 Γò░ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ It can not be redeclared here
+ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓò»
+
+[PARSE_ERROR] Identifier `showConfirm` has already been declared
+      Γò¡ΓöÇ[ src/screens/AdminScreens.tsx:2510:21 ]
+      Γöé
+ 2510 Γöé     const { showAlert, showConfirm } = useDialog();
+      Γöé                        ΓöÇΓöÇΓöÇΓöÇΓöÇΓö¼ΓöÇΓöÇΓöÇΓöÇΓöÇ  
+      Γöé                             Γò░ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ `showConfirm` has already been declared here
+ 2511 Γöé     const { showAlert, showConfirm } = useDialog();
+      Γöé                        ΓöÇΓöÇΓöÇΓöÇΓöÇΓö¼ΓöÇΓöÇΓöÇΓöÇΓöÇ  
+      Γöé                             Γò░ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ It can not be redeclared here
+ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓò»
+
+    at aggregateBindingErrorsIntoJsError (file:///C:/Users/SATHISH/Downloads/Enterprise%20SaaS%20Dashboard%20Design/node_modules/rolldown/dist/shared/error-BHRSI0R7.mjs:48:18)
+    at unwrapBindingResult (file:///C:/Users/SATHISH/Downloads/Enterprise%20SaaS%20Dashboard%20Design/node_modules/rolldown/dist/shared/error-BHRSI0R7.mjs:18:128)
+    at #build (file:///C:/Users/SATHISH/Downloads/Enterprise%20SaaS%20Dashboard%20Design/node_modules/rolldown/dist/shared/rolldown-build-CtPvmZgJ.mjs:3276:34)
+    at async buildEnvironment (file:///C:/Users/SATHISH/Downloads/Enterprise%20SaaS%20Dashboard%20Design/node_modules/vite/dist/node/chunks/node.js:33061:66)
+    at async Object.build (file:///C:/Users/SATHISH/Downloads/Enterprise%20SaaS%20Dashboard%20Design/node_modules/vite/dist/node/chunks/node.js:33483:19)
+    at async Object.buildApp (file:///C:/Users/SATHISH/Downloads/Enterprise%20SaaS%20Dashboard%20Design/node_modules/vite/dist/node/chunks/node.js:33480:153)
+    at async CAC.<anonymous> (file:///C:/Users/SATHISH/Downloads/Enterprise%20SaaS%20Dashboard%20Design/node_modules/vite/dist/node/cli.js:776:3) {
+  errors: [Getter/Setter]
+}

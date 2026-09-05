@@ -25,6 +25,12 @@ public class UserService {
             throw new IllegalArgumentException("Email already registered: " + user.getEmail());
         }
 
+        if (user.getPhone() != null && !user.getPhone().trim().isEmpty()) {
+            if (!userRepository.findByPhone(user.getPhone()).isEmpty()) {
+                throw new IllegalArgumentException("Phone number already registered: " + user.getPhone());
+            }
+        }
+
         user.setPassword(passwordEncoder.encode(user.getPassword()));
 
         // Generate placeholder DID on registration (admins will verify it later)

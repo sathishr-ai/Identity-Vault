@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Java Modules Architecture</title>
+    <style>
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            background-color: #ffffff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .slide-container {
+            width: 1400px;
+            height: 650px;
+            background-color: #ffffff;
+            position: relative;
+            font-family: 'Times New Roman', Times, serif;
+        }
+
+        .box {
+            position: absolute;
+            background: #ffffff;
+            border-radius: 6px;
+            box-shadow: 4px 6px 15px rgba(0, 0, 0, 0.1);
+            border: 2px solid #000;
+            padding: 10px;
+            box-sizing: border-box;
+            z-index: 10;
+        }
+
+        .box-title {
+            text-align: center;
+            font-size: 15px;
+            font-weight: bold;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+        }
+
+        .box-list {
+            margin: 0;
+            padding-left: 20px;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        /* Specific Node Colors based on function */
+        .color-gray {
+            border-color: #334155;
+        }
+
+        .color-blue {
+            border-color: #2563eb;
+        }
+
+        .color-green {
+            border-color: #16a34a;
+        }
+
+        .color-purple {
+            border-color: #9333ea;
+        }
+
+        .color-red {
+            border-color: #dc2626;
+        }
+
+        .color-teal {
+            border-color: #0d9488;
+        }
+
+        /* Box Positions */
+        #node1 {
+            left: 30px;
+            top: 300px;
+            width: 160px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* USER / VERIFIER */
+        #node2 {
+            left: 240px;
+            top: 300px;
+            width: 160px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* APPLICATION / UI */
+
+        #node3 {
+            left: 450px;
+            top: 100px;
+            width: 190px;
+            height: 110px;
+        }
+
+        /* USER MODULE */
+        #node4 {
+            left: 450px;
+            top: 450px;
+            width: 190px;
+            height: 110px;
+        }
+
+        /* ADMIN MODULE */
+
+        #node5 {
+            left: 690px;
+            top: 290px;
+            width: 170px;
+            height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* JAVA SPRING BOOT */
+
+        #node6 {
+            left: 910px;
+            top: 100px;
+            width: 200px;
+            height: 110px;
+        }
+
+        /* BLOCKCHAIN */
+        #node7 {
+            left: 910px;
+            top: 450px;
+            width: 200px;
+            height: 110px;
+        }
+
+        /* DATABASE */
+
+        #node8 {
+            left: 1160px;
+            top: 100px;
+            width: 200px;
+            height: 110px;
+        }
+
+        /* VERIFIER MODULE */
+
+        /* Canvas for drawing SVG lines */
+        svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        line,
+        polyline {
+            stroke: #475569;
+            stroke-width: 3;
+            fill: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="slide-container">
+
+        <!-- SVG Connections mapping the exact horizontal tree structure -->
+        <svg>
+            <!-- 1 to 2 (Straight Right) -->
+            <line x1="190" y1="330" x2="240" y2="330" />
+
+            <!-- 2 to 3 & 4 (Split Tree Right) -->
+            <polyline points="400,330 425,330 425,150 450,150" />
+            <polyline points="400,330 425,330 425,500 450,500" />
+
+            <!-- 3 & 4 to 5 (Merge Tree Right) -->
+            <polyline points="640,150 665,150 665,330 690,330" />
+            <polyline points="640,500 665,500 665,330 690,330" />
+
+            <!-- 5 to 6 & 7 (Split Tree Right) -->
+            <polyline points="860,330 885,330 885,150 910,150" />
+            <polyline points="860,330 885,330 885,500 910,500" />
+
+            <!-- 6 to 8 (Straight Right) -->
+            <line x1="1110" y1="150" x2="1160" y2="150" />
+        </svg>
+
+        <!-- HTML Nodes -->
+        <div id="node1" class="box color-gray">
+            <div class="box-title" style="margin: 0;">USER / VERIFIER</div>
+        </div>
+
+        <div id="node2" class="box color-blue">
+            <div class="box-title" style="margin: 0;">APP / UI LAYER</div>
+        </div>
+
+        <div id="node3" class="box color-teal">
+            <div class="box-title">USER MODULE</div>
+            <ul class="box-list">
+                <li>Registration</li>
+                <li>Identity Upload</li>
+                <li>Profile Management</li>
+            </ul>
+        </div>
+
+        <div id="node4" class="box color-red">
+            <div class="box-title">ADMIN MODULE</div>
+            <ul class="box-list">
+                <li>Document Review</li>
+                <li>Approve / Reject</li>
+                <li>User Management</li>
+            </ul>
+        </div>
+
+        <div id="node5" class="box color-gray">
+            <div class="box-title" style="margin: 0;">JAVA / SPRING BOOT<br>APP LAYER</div>
+        </div>
+
+        <div id="node6" class="box color-purple">
+            <div class="box-title">BLOCKCHAIN MODULE</div>
+            <ul class="box-list">
+                <li>Block Creation</li>
+                <li>Hash Validation</li>
+                <li>Chain Verification</li>
+            </ul>
+        </div>
+
+        <div id="node7" class="box color-green">
+            <div class="box-title">DATABASE / STORAGE</div>
+            <ul class="box-list">
+                <li>User Records</li>
+                <li>Documents</li>
+                <li>Verification History</li>
+            </ul>
+        </div>
+
+        <div id="node8" class="box color-purple">
+            <div class="box-title">VERIFIER MODULE</div>
+            <ul class="box-list">
+                <li>Identity Search</li>
+                <li>QR Verification</li>
+                <li>Verification Result</li>
+            </ul>
+        </div>
+
+    </div>
+</body>
+
+</html>

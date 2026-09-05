@@ -27,6 +27,17 @@ public class JwtTokenUtil implements Serializable {
     @Value("${jwt.expiration}")
     private Long expiration;
 
+    // --- MODULE 1: Session Management Blacklist ---
+    private final java.util.Set<String> tokenBlacklist = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    public void blacklistToken(String token) {
+        tokenBlacklist.add(token);
+    }
+
+    public boolean isTokenBlacklisted(String token) {
+        return tokenBlacklist.contains(token);
+    }
+
     private Key getSigningKey() {
         byte[] keyBytes = Decoders.BASE64.decode(secret);
         return Keys.hmacShaKeyFor(keyBytes);
@@ -64,6 +75,12 @@ public class JwtTokenUtil implements Serializable {
         return doGenerateToken(claims, userDetails.getUsername());
     }
 
+    public String generateToken(String email) {
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("role", "ROLE_USER");
+        return doGenerateToken(claims, email);
+    }
+
     private String doGenerateToken(Map<String, Object> claims, String subject) {
         return Jwts.builder()
                 .setClaims(claims)
@@ -75,6 +92,11 @@ public class JwtTokenUtil implements Serializable {
     }
 
     public Boolean validateToken(String token, UserDetails userDetails) {
+        // Module 1 Check: Instant Zero-Trust Session Revocation
+        if (isTokenBlacklisted(token)) {
+            return false;
+        }
+
         final String username = getUsernameFromToken(token);
         return (username.equals(userDetails.getUsername()) && !isTokenExpired(token));
     }

@@ -2,6 +2,7 @@ import { defineConfig, type HtmlTagDescriptor, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'node:path'
+import { VitePWA } from 'vite-plugin-pwa'
 
 import siteConfiguration from './.figma/make/site.json'
 
@@ -23,6 +24,18 @@ export default defineConfig(({ mode }) => {
       figmaErrorOverlayReplay(),
       figmaReactRefreshBoundaryFallback(),
       figmaMakeKitPlugin({ storiesGlob: '/src/**/*.stories.{ts,tsx,js,jsx}' }),
+      VitePWA({
+        registerType: 'autoUpdate',
+        manifest: {
+          name: 'Identity Vault',
+          short_name: 'Identivault',
+          description: 'Identity Verification Platform',
+          theme_color: '#0f172a',
+          background_color: '#ffffff',
+          display: 'standalone',
+          icons: []
+        }
+      })
     ],
     resolve: {
       alias: {

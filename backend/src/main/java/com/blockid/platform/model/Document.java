@@ -29,6 +29,7 @@ public class Document {
     private String docHash; // SHA-256 hash of the uploaded document contents
     private String size; // e.g. "1.8 MB"
     private String storageUrl; // URL from Supabase storage
+    private String rejectedReason;
 
     public Document() {
     }
@@ -104,5 +105,23 @@ public class Document {
 
     public void setStorageUrl(String storageUrl) {
         this.storageUrl = storageUrl;
+    }
+
+    private String expiryDate;
+
+    public String getExpiryDate() {
+        return expiryDate;
+    }
+
+    public void setExpiryDate(String expiryDate) {
+        this.expiryDate = expiryDate;
+    }
+
+    public String getRejectedReason() {
+        return rejectedReason;
+    }
+
+    public void setRejectedReason(String rejectedReason) {
+        this.rejectedReason = rejectedReason;
     }
 }

@@ -1,4 +1,5 @@
-const API_BASE_URL = 'http://127.0.0.1:8080/api/v1';
+const host = window.location.hostname || 'localhost';
+const API_BASE_URL = `http://${host}:8080/api/v1`;
 
 export type Role = 'user' | 'admin' | 'verifier';
 
@@ -6,11 +7,15 @@ export interface UserProfile {
     id: number;
     name: string;
     email: string;
-    role: Role;
-    phone: string;
-    country: string;
-    did: string;
+    phone?: string;
+    role: string;
     status: string;
+    did?: string;
+    country?: string;
+    street?: string;
+    city?: string;
+    state?: string;
+    zip?: string;
 }
 
 export interface AuthResponse {
@@ -30,6 +35,8 @@ export interface DocumentInfo {
     docHash: string;
     storageUrl: string;
     uploadDate: string;
+    remarks?: string;
+    rejectedReason?: string;
 }
 
 export interface IdentityStatusResponse {
@@ -122,7 +129,7 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> 
     });
 
     if (!response.ok) {
-        if (response.status === 401) {
+        if (response.status === 401 || response.status === 403) {
             clearAuth();
         }
         let errMsg = `Request failed with status ${response.status}`;
@@ -163,6 +170,13 @@ export const authApi = {
             body: JSON.stringify(form),
         }),
 
+    check(email: string, phone: string): Promise<{ message: string }> {
+        return apiFetch('/auth/check', {
+            method: 'POST',
+            body: JSON.stringify({ email, phone }),
+        });
+    },
+
     forgotPassword(email: string): Promise<{ message: string }> {
         return apiFetch('/auth/forgot-password', {
             method: 'POST',
@@ -170,10 +184,23 @@ export const authApi = {
         });
     },
 
+    verifyResetOtp(email: string, otp: string): Promise<{ message: string }> {
+        return apiFetch('/auth/verify-reset-otp', {
+            method: 'POST',
+            body: JSON.stringify({ email, otp }),
+        });
+    },
+
     resetPassword(email: string, otp: string, newPassword: string): Promise<{ message: string }> {
         return apiFetch('/auth/reset-password', {
             method: 'POST',
             body: JSON.stringify({ email, otp, newPassword }),
+        });
+    },
+
+    revokeSession(): Promise<{ message: string }> {
+        return apiFetch('/auth/revoke-session', {
+            method: 'POST'
         });
     }
 };
@@ -193,7 +220,7 @@ export const userApi = {
         });
     },
 
-    updateProfile: (profile: { name?: string; phone?: string; country?: string }): Promise<{ message: string; user: Partial<UserProfile> }> =>
+    updateProfile: (profile: { name?: string; phone?: string; country?: string; street?: string; city?: string; state?: string; zip?: string; }): Promise<{ message: string; user: Partial<UserProfile> }> =>
         apiFetch('/identity/profile', {
             method: 'PUT',
             body: JSON.stringify(profile),
@@ -216,6 +243,18 @@ export const userApi = {
     deleteDocument: (documentId: number): Promise<{ message: string }> =>
         apiFetch(`/identity/documents/${documentId}`, {
             method: 'DELETE',
+        }),
+
+    updatePassword: (payload: any): Promise<{ message: string }> =>
+        apiFetch('/identity/password', {
+            method: 'PUT',
+            body: JSON.stringify(payload),
+        }),
+
+    deleteAccount: (payload: any): Promise<{ message: string }> =>
+        apiFetch('/identity/account', {
+            method: 'DELETE',
+            body: JSON.stringify(payload),
         }),
 };
 
@@ -263,9 +302,10 @@ export const adminApi = {
         totalPages: number;
     }> => apiFetch(`/admin/pending-requests?page=${page}&size=${size}`),
 
-    approveIdentity: (userId: number): Promise<{ message: string }> =>
+    approveIdentity: (userId: number, payload?: any): Promise<{ message: string }> =>
         apiFetch(`/admin/approve/${userId}`, {
             method: 'POST',
+            body: payload ? JSON.stringify(payload) : undefined
         }),
 
     rejectIdentity: (userId: number, reason: string): Promise<{ message: string }> =>
@@ -284,6 +324,9 @@ export const adminApi = {
         totalPages: number;
     }> => apiFetch(`/admin/audit-logs?page=${page}&size=${size}&severity=${severity}`),
 
+    deleteAuditLog: (id: number): Promise<{ message: string }> =>
+        apiFetch(`/admin/audit-logs/${id}`, { method: 'DELETE' }),
+
     getAdminNotifications: (): Promise<any[]> => apiFetch('/admin/notifications'),
 
     getMonthlyAnalytics: (): Promise<any[]> =>
@@ -292,10 +335,22 @@ export const adminApi = {
     deleteUser: (userId: number): Promise<{ message: string }> =>
         apiFetch(`/admin/users/${userId}`, { method: 'DELETE' }),
 
-    updateRole: (userId: number, role: string): Promise<{ message: string }> =>
-        apiFetch(`/admin/users/${userId}/role`, {
+    updateRole(userId: number, role: string): Promise<{ message: string }> {
+        return apiFetch(`/admin/users/${userId}/role`, {
             method: 'PUT',
-            body: JSON.stringify({ role }),
+            body: JSON.stringify({ role })
+        });
+    },
+    updateStatus(userId: number, status: string): Promise<{ message: string }> {
+        return apiFetch(`/admin/users/${userId}/status`, {
+            method: 'PUT',
+            body: JSON.stringify({ status })
+        });
+    },
+    reviewDocuments: (userId: number, decisions: { docId: number; decision: string; validUntil?: string; reason?: string }[]): Promise<{ message: string; approved: number; rejected: number }> =>
+        apiFetch(`/admin/review-documents/${userId}`, {
+            method: 'POST',
+            body: JSON.stringify(decisions),
         }),
 };
 
@@ -333,7 +388,16 @@ export const verifierApi = {
         apiFetch('/verify/history'),
 
     deleteVerifierHistory: (historyId: number): Promise<{ message: string }> =>
-        apiFetch(`/verify/history/${historyId}`, { method: 'DELETE' })
+        apiFetch(`/verify/history/${historyId}`, { method: 'DELETE' }),
+
+    flagFraud: (historyId: number): Promise<{ message: string }> =>
+        apiFetch(`/verify/history/${historyId}/flag`, { method: 'PUT' }),
+
+    submitSupportTicket: (subject: string, message: string): Promise<{ message: string }> =>
+        apiFetch('/verify/support', {
+            method: 'POST',
+            body: JSON.stringify({ subject, message })
+        })
 };
 
 // ── Reports Endpoint ──────────────────────────────────────────────────────────

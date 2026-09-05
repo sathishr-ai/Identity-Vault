@@ -7,6 +7,12 @@ import java.util.Map;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+    @ExceptionHandler(org.springframework.security.authentication.LockedException.class)
+    public ResponseEntity<?> handleLocked(Exception e) {
+        return ResponseEntity.status(403).body(Map.of("message",
+                "Your account has been temporarily blocked due to security concerns or fraudulent documentation."));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<?> handleAll(Exception e) {
         e.printStackTrace();

@@ -1,4 +1,5 @@
 import { type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { CheckCircle, AlertCircle, Info, AlertTriangle, X } from 'lucide-react';
 
 // ── Badge ────────────────────────────────────────────────────────────────────
@@ -11,6 +12,7 @@ const statusConfig = {
   valid: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-500', label: 'Valid' },
   tampered: { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200', dot: 'bg-red-500', label: 'Tampered' },
   approved: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-500', label: 'Approved' },
+  'action required': { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200', dot: 'bg-red-500', label: 'Action Required' },
   info: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200', dot: 'bg-blue-500', label: 'Info' },
   warning: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', dot: 'bg-amber-500', label: 'Warning' },
   critical: { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200', dot: 'bg-red-500', label: 'Critical' },
@@ -66,12 +68,12 @@ export function StatCard({ label, value, sub, icon, color = 'blue', trend }: {
     cyan: 'from-cyan-500 to-cyan-600',
   };
   return (
-    <Card hover className="p-5">
+    <Card hover className="p-4 sm:p-5 min-w-0">
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">{label}</p>
-          <p className="text-2xl font-bold text-slate-800 mt-1">{value}</p>
-          {sub && <p className="text-xs text-slate-500 mt-0.5">{sub}</p>}
+          <p className="text-[10px] sm:text-xs font-medium text-slate-500 uppercase tracking-wider truncate whitespace-normal leading-tight">{label}</p>
+          <p className="text-lg sm:text-2xl font-bold text-slate-800 mt-1">{value}</p>
+          {sub && <p className="text-[10px] sm:text-xs text-slate-500 mt-0.5">{sub}</p>}
           {trend && (
             <div className={`flex items-center gap-1 mt-2 text-xs font-medium ${trend.up ? 'text-emerald-600' : 'text-red-500'}`}>
               <span>{trend.up ? '↑' : '↓'} {trend.value}</span>
@@ -79,7 +81,7 @@ export function StatCard({ label, value, sub, icon, color = 'blue', trend }: {
             </div>
           )}
         </div>
-        <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${colors[color]} flex items-center justify-center text-white shadow-lg`}>
+        <div className={`w-8 h-8 sm:w-11 sm:h-11 flex-shrink-0 rounded-lg sm:rounded-xl bg-gradient-to-br ${colors[color]} flex items-center justify-center text-white shadow-lg`}>
           {icon}
         </div>
       </div>
@@ -105,7 +107,7 @@ export function Button({ children, variant = 'primary', size = 'md', onClick, cl
       type={type}
       onClick={onClick}
       disabled={disabled}
-      className={`inline-flex items-center gap-2 font-medium rounded-xl transition-all duration-150 ${variants[variant]} ${sizes[size]} ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${className}`}
+      className={`inline-flex items-center justify-center gap-2 font-medium rounded-xl transition-all duration-150 ${variants[variant]} ${sizes[size]} ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${className}`}
     >
       {children}
     </button>
@@ -162,14 +164,15 @@ const toastIcons = {
   warning: <AlertTriangle size={16} className="text-amber-500 flex-shrink-0" />,
 };
 export function Toast({ type, message, onClose }: { type: keyof typeof toastIcons; message: string; onClose: () => void }) {
-  return (
-    <div className="fixed bottom-6 right-6 z-50 animate-fade-in">
+  return createPortal(
+    <div className="fixed bottom-6 right-6 z-[9999] animate-fade-in pointer-events-auto">
       <div className="flex items-center gap-3 bg-white border border-slate-200 rounded-2xl shadow-xl px-4 py-3 max-w-sm">
         {toastIcons[type]}
         <p className="text-sm text-slate-700 flex-1">{message}</p>
         <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={14} /></button>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -179,17 +182,18 @@ export function Modal({ open, onClose, title, children, size = 'md' }: {
 }) {
   if (!open) return null;
   const sizes = { sm: 'max-w-md', md: 'max-w-lg', lg: 'max-w-2xl' };
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onClose} />
-      <div className={`relative bg-white rounded-2xl shadow-2xl w-full ${sizes[size]} animate-fade-in border border-slate-200`}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+      <div className={`relative bg-white rounded-2xl shadow-2xl w-full ${sizes[size]} animate-fade-in border border-slate-200 overflow-hidden max-h-[90vh] overflow-y-auto`}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50 sticky top-0 z-10">
           <h3 className="text-base font-semibold text-slate-800">{title}</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100"><X size={18} /></button>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 bg-white shadow-sm border border-slate-200"><X size={16} /></button>
         </div>
         <div className="p-6">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

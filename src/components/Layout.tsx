@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Shield, FileText, Upload, CreditCard, QrCode, Link, History,
   Bell, User, Settings, Users, Search, Activity, BarChart3, ClipboardList,
   FileBarChart, Lock, ScanLine, Download, ChevronRight, LogOut, Moon, Sun,
-  Menu, CheckCircle
+  Menu, CheckCircle, XCircle, LifeBuoy, MessageSquare
 } from 'lucide-react';
 import { Avatar } from './UIComponents';
 import { getSavedUser, userApi, adminApi } from '../service/api';
@@ -40,6 +40,7 @@ const adminNav: NavItem[] = [
   { id: 'blockchain-explorer', label: 'Blockchain Explorer', icon: Link, section: 'Blockchain' },
   { id: 'identity-details', label: 'Identity Details', icon: Shield },
   { id: 'analytics', label: 'Analytics Dashboard', icon: BarChart3, section: 'Insights' },
+  { id: 'admin-messages', label: 'Verifier Inbox', icon: MessageSquare },
   { id: 'audit-logs', label: 'Audit Logs', icon: Activity },
   { id: 'reports', label: 'Reports', icon: FileBarChart },
   { id: 'security-settings', label: 'Security Settings', icon: Lock, section: 'Security' },
@@ -51,6 +52,7 @@ const verifierNav: NavItem[] = [
   { id: 'verification-result', label: 'Verification Result', icon: CheckCircle },
   { id: 'verifier-history', label: 'Verification History', icon: History, section: 'Activity' },
   { id: 'download-report', label: 'Download Report', icon: Download },
+  { id: 'verifier-support', label: 'Help & Support', icon: LifeBuoy },
 ];
 
 const navMap: Record<Role, NavItem[]> = { user: userNav, admin: adminNav, verifier: verifierNav };
@@ -70,8 +72,10 @@ interface LayoutProps {
 
 export default function Layout({ role, screen, onNav, onLogout, darkMode, onToggleDark, children }: LayoutProps) {
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [pendingRequests, setPendingRequests] = useState(0);
+  const [unreadInbox, setUnreadInbox] = useState(0);
   const nav = navMap[role];
   let prevSection = '';
 
@@ -86,29 +90,68 @@ export default function Layout({ role, screen, onNav, onLogout, darkMode, onTogg
       }).catch(console.error);
     };
     fetchNotifs();
+    window.addEventListener('blockid_notifs_read', fetchNotifs);
 
     // Dynamic Pending Requests (Only for Admin)
-    if (role === 'admin') {
-      adminApi.getStats()
-        .then(stats => setPendingRequests(stats.pendingVerification))
-        .catch(console.error);
-    }
+    const fetchPending = () => {
+      if (role === 'admin') {
+        adminApi.getStats()
+          .then(stats => setPendingRequests(stats.pendingVerification))
+          .catch(console.error);
+      }
+    };
+    fetchPending();
+    window.addEventListener('blockid_pending_update', fetchPending);
+
+    // Dynamic Inbox Badges (Only for Admin)
+    const fetchInbox = () => {
+      if (role === 'admin') {
+        adminApi.getAuditLogs(0, 50, '').then(res => {
+          const inboxes = res.logs.filter((l: any) => l.module === 'Support' || l.module === 'Security');
+          const lastRead = parseInt(localStorage.getItem('blockid_inbox_read_time') || '0');
+          const unreadCount = inboxes.filter((m: any) => new Date(m.timestamp).getTime() > lastRead).length;
+          setUnreadInbox(unreadCount);
+        }).catch(console.error);
+      }
+    };
+    fetchInbox();
+    window.addEventListener('blockid_inbox_update', fetchInbox);
+
+    return () => {
+      window.removeEventListener('blockid_notifs_read', fetchNotifs);
+      window.removeEventListener('blockid_pending_update', fetchPending);
+      window.removeEventListener('blockid_inbox_update', fetchInbox);
+    };
   }, [role]);
+
+  useEffect(() => {
+    if (screen === 'admin-messages') {
+      localStorage.setItem('blockid_inbox_read_time', Date.now().toString());
+      setUnreadInbox(0);
+    }
+  }, [screen]);
 
   const savedUser = getSavedUser() || { name: 'User', email: '', avatar: 'U' };
   const initials = savedUser.name?.charAt(0).toUpperCase() || 'U';
 
   return (
     <div className={`flex h-screen overflow-hidden ${darkMode ? 'dark' : ''}`} style={{ background: 'var(--background)' }}>
+      {/* Mobile Overlay */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 md:hidden"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
       {/* Sidebar */}
       <aside
-        className={`flex-shrink-0 flex flex-col transition-all duration-300 ${collapsed ? 'w-16' : 'w-60'}`}
+        className={`fixed md:relative inset-y-0 left-0 z-50 flex-shrink-0 flex flex-col transition-transform md:transition-all duration-300 ${collapsed ? 'w-16' : 'w-60'} ${mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}
         style={{ background: 'var(--sidebar)', borderRight: '1px solid var(--sidebar-border)' }}
       >
         {/* Logo */}
         <div className="flex items-center gap-3 px-4 py-4 border-b border-slate-800">
-          <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-blue-500/30">
-            <Shield size={16} className="text-white" />
+          <div className="w-10 h-10 rounded-xl overflow-hidden shadow-lg shadow-cyan-500/20 shrink-0 border border-white/10">
+            <img src="/app-logo.png" alt="Identity Vault" className="w-full h-full object-cover" />
           </div>
           {!collapsed && (
             <div>
@@ -116,8 +159,11 @@ export default function Layout({ role, screen, onNav, onLogout, darkMode, onTogg
               <p className="text-slate-500 text-[10px] mt-0.5">Digital Identity Platform</p>
             </div>
           )}
-          <button onClick={() => setCollapsed(!collapsed)} className="ml-auto text-slate-500 hover:text-slate-300 transition-colors">
+          <button onClick={() => setCollapsed(!collapsed)} className="hidden md:block ml-auto text-slate-500 hover:text-slate-300 transition-colors">
             {collapsed ? <ChevronRight size={14} /> : <Menu size={14} />}
+          </button>
+          <button onClick={() => setMobileOpen(false)} className="md:hidden ml-auto p-1 text-slate-400 hover:text-white transition-colors">
+            <XCircle size={18} />
           </button>
         </div>
 
@@ -146,7 +192,8 @@ export default function Layout({ role, screen, onNav, onLogout, darkMode, onTogg
 
             let displayBadge = item.badge;
             if (item.id === 'notifications') displayBadge = unreadNotifications > 0 ? unreadNotifications : undefined;
-            if (item.id === 'pending-requests') displayBadge = pendingRequests > 0 ? pendingRequests : undefined;
+            if (item.id === 'pending-requests' || item.id === 'approve-reject') displayBadge = pendingRequests > 0 ? pendingRequests : undefined;
+            if (item.id === 'admin-messages') displayBadge = unreadInbox > 0 ? unreadInbox : undefined;
 
             return (
               <div key={item.id}>
@@ -154,7 +201,7 @@ export default function Layout({ role, screen, onNav, onLogout, darkMode, onTogg
                   <p className="text-[10px] font-semibold text-slate-600 uppercase tracking-widest px-3 pt-4 pb-1">{item.section}</p>
                 )}
                 <button
-                  onClick={() => onNav(item.id)}
+                  onClick={() => { onNav(item.id); setMobileOpen(false); }}
                   className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left transition-all duration-150 group mb-0.5 ${active
                     ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30'
                     : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
@@ -213,26 +260,22 @@ export default function Layout({ role, screen, onNav, onLogout, darkMode, onTogg
       </aside>
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Top bar */}
-        <header className="flex-shrink-0 flex items-center justify-between px-6 py-3 bg-white border-b border-slate-200 shadow-sm">
-          <div>
-            <h2 className="text-sm font-semibold text-slate-800">
-              {nav.find(n => n.id === screen)?.label || 'Dashboard'}
-            </h2>
-            <p className="text-xs text-slate-400">Identity Vault Platform · {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
-          </div>
+        <header className="flex-shrink-0 flex items-center justify-between px-4 md:px-6 py-3 bg-white border-b border-slate-200 shadow-sm relative z-30">
           <div className="flex items-center gap-3">
-            {/* Network status */}
-            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 rounded-xl border border-emerald-200">
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-xs font-medium text-emerald-700">Ethereum Mainnet</span>
+            <button onClick={() => setMobileOpen(true)} className="md:hidden p-1.5 text-slate-500 hover:bg-slate-100 rounded-lg">
+              <Menu size={20} />
+            </button>
+            <div>
+              <h2 className="text-sm font-semibold text-slate-800">
+                {nav.find(n => n.id === screen)?.label || 'Dashboard'}
+              </h2>
+              <p className="text-xs text-slate-400 hidden sm:block">Identity Vault Platform · {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
             </div>
-            {/* Block */}
-            <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 rounded-xl border border-blue-200">
-              <Link size={11} className="text-blue-600" />
-              <span className="font-mono text-xs text-blue-700">#19,847,234</span>
-            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
             {/* Notifications */}
             <button onClick={() => onNav('notifications')} className="relative w-9 h-9 bg-slate-100 rounded-xl flex items-center justify-center text-slate-600 hover:bg-slate-200 transition-all">
               <Bell size={16} />
@@ -242,6 +285,7 @@ export default function Layout({ role, screen, onNav, onLogout, darkMode, onTogg
                 </span>
               )}
             </button>
+
             {/* Avatar */}
             <button onClick={() => onNav('profile')} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
               <Avatar initials={initials} size="sm" />
